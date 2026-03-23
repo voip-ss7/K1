@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!-- Title: Headset Tester Application
+       Author: Andrey Chernoivanov (andrey.chernoivanov@pm.me)
+       Description: Simple tool that can be used to test your headset and
+       camera to make sure it's working fine
+  -->
+<head>
+  <meta charset="UTF-8">
+  <title>Headset Tester</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial;
+      background: #121212;
+      color: #e0e0e0;
+    }
+
+    .container {
+      display: flex;
+      height: 100vh;
+    }
+
+    .left, .right {
+      padding: 30px;
+      box-sizing: border-box;
+    }
+
+    .left {
+      width: 35%;
+      border-right: 1px solid #2a2a2a;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .right {
+      width: 65%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+    }
+
+    h2 { color: #ffffff; }
+
+    .card {
+      background: #1e1e1e;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+    }
+
+    .row { margin: 15px 0; display: flex; align-items: center; gap: 10px; }
+
+    select {
+      flex: 1;
+      padding: 8px;
+      background: #2a2a2a;
+      color: #fff;
+      border: 1px solid #333;
+      border-radius: 4px;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      background: #2a2a2a;
+      color: white;
+      border: 1px solid #333;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button:disabled { opacity: 0.5; }
+
+    #timer {
+      font-size: 42px;
+      font-weight: bold;
+    }
+
+    #warning {
+      color: #ff5252;
+      font-weight: bold;
+    }
+
+    video, audio {
+      width: 320px;
+      background: #000;
+      border-radius: 8px;
+    }
+
+    .meter-container {
+      margin-top: 20px;
+      width: 60px;
+      height: 150px;
+      background: #2a2a2a;
+      border-radius: 8px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    canvas {
+      background: transparent;
+    }
+
+    .status-badge {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-left: 5px;
+      background-color: #555;
+    }
+
+    .status-active { background-color: #4caf50; }
+    .status-inactive { background-color: #ff5252; }
+
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="left">
+    <div class="card">
+      <h2>Device Setup</h2>
+
+      <div class="row">
+        <label>Microphone:</label>
+        <select id="audioSelect"></select>
+        <span id="micBadge" class="status-badge status-inactive"></span>
+      </div>
+
+      <div class="row">
+        <label>Camera:</label>
+        <select id="videoSelect"></select>
+        <span id="camBadge" class="status-badge status-inactive"></span>
+      </div>
+
+      <div class="row">
+        <label>
+          <input type="checkbox" id="enableCamera" checked>
+          Enable Camera
+        </label>
+      </div>
+
+      <div class="row">
+        <button id="startBtn">Start Test</button>
+      </div>
+
+      <p id="status"></p>
+      <p id="deviceName"></p>
+      <p id="warning"></p>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="card">
+      <div id="timer">10</div>
+      <video id="video" autoplay muted></video>
+      <audio id="audioPlayback" controls></audio>
+      <video id="videoPlayback" controls></video>
+      <div class="meter-container">
+        <canvas id="meter" width="30" height="150"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const startBtn = document.getElementById('startBtn');
+const status = document.getElementById('status');
+const video = document.getElementById('video');
+const audioPlayback = document.getElementById('audioPlayback');
+const videoPlayback = document.getElementById('videoPlayback');
+const deviceNameEl = document.getElementById('deviceName');
+const meterCanvas = document.getElementById('meter');
+const meterCtx = meterCanvas.getContext('2d');
+const audioSelect = document.getElementById('audioSelect');
+const videoSelect = document.getElementById('videoSelect');
+const timerEl = document.getElementById('timer');
+const warningEl = document.getElementById('warning');
+const micBadge = document.getElementById('micBadge');
+const camBadge = document.getElementById('camBadge');
+
+let audioStream, videoStream;
+let audioRecorder, videoRecorder;
+let audioChunks = [], videoChunks = [];
+let audioContext, analyser, dataArray;
+let silenceDuration = 0;
+let countdownInterval;
+let meterValue = 0;
+
+async function getDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  audioSelect.innerHTML = '';
+  videoSelect.innerHTML = '';
+
+  devices.forEach(device => {
+    const option = document.createElement('option');
+    option.value = device.deviceId;
+    option.text = device.label || `${device.kind}`;
+    if (device.kind === 'audioinput') audioSelect.appendChild(option);
+    if (device.kind === 'videoinput') videoSelect.appendChild(option);
+  });
+}
+
+function drawMeter() {
+  if (!analyser) return;
+  analyser.getByteTimeDomainData(dataArray);
+
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) {
+    const val = (dataArray[i] - 128) / 128;
+    sum += val * val;
+  }
+  const volume = Math.sqrt(sum / dataArray.length);
+
+  // Smooth animation
+  meterValue += (volume - meterValue) * 0.2;
+
+  meterCtx.clearRect(0, 0, meterCanvas.width, meterCanvas.height);
+  const barHeight = meterValue * meterCanvas.height * 1.5;
+  meterCtx.fillStyle = '#4caf50';
+  meterCtx.fillRect(0, meterCanvas.height - barHeight, meterCanvas.width, barHeight);
+
+  if (volume < 0.02) {
+    silenceDuration += 1/60;
+    micBadge.className = 'status-badge status-inactive';
+  } else {
+    silenceDuration = 0;
+    micBadge.className = 'status-badge status-active';
+    warningEl.textContent = '';
+  }
+
+  if (silenceDuration > 2) {
+    warningEl.textContent = 'No signal detected from microphone!';
+  }
+
+  requestAnimationFrame(drawMeter);
+}
+
+startBtn.onclick = async () => {
+  startBtn.disabled = true;
+  status.textContent = "Requesting permissions...";
+  warningEl.textContent = '';
+  silenceDuration = 0;
+  micBadge.className = 'status-badge status-inactive';
+  camBadge.className = 'status-badge status-inactive';
+
+  try {
+    const useCamera = document.getElementById('enableCamera').checked;
+
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: audioSelect.value ? { exact: audioSelect.value } : undefined }});
+    if (useCamera) {
+      videoStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: videoSelect.value ? { exact: videoSelect.value } : undefined }});
+      video.srcObject = videoStream;
+      camBadge.className = 'status-badge status-active';
+    }
+
+    const audioTrack = audioStream.getAudioTracks()[0];
+    deviceNameEl.textContent = "Audio Device: " + (audioTrack.label || "Unknown device");
+
+    audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(audioStream);
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
+    dataArray = new Uint8Array(analyser.fftSize);
+
+    source.connect(analyser);
+    drawMeter();
+
+    audioRecorder = new MediaRecorder(audioStream);
+    audioChunks = [];
+    audioRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+    if (useCamera) {
+      videoRecorder = new MediaRecorder(videoStream);
+      videoChunks = [];
+      videoRecorder.ondataavailable = e => videoChunks.push(e.data);
+    }
+
+    status.textContent = "Recording...";
+
+    audioRecorder.start();
+    if (videoRecorder) videoRecorder.start();
+
+    let timeLeft = 10;
+    timerEl.textContent = timeLeft;
+
+    countdownInterval = setInterval(() => {
+      timeLeft--;
+      timerEl.textContent = timeLeft;
+    }, 1000);
+
+    setTimeout(() => {
+      clearInterval(countdownInterval);
+
+      audioRecorder.stop();
+      if (videoRecorder) videoRecorder.stop();
+
+      audioStream.getTracks().forEach(t => t.stop());
+      if (videoStream) videoStream.getTracks().forEach(t => t.stop());
+
+      video.srcObject = null;
+    }, 10000);
+
+    audioRecorder.onstop = () => {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      audioPlayback.src = URL.createObjectURL(audioBlob);
+    };
+
+    if (videoRecorder) {
+      videoRecorder.onstop = () => {
+        const videoBlob = new Blob(videoChunks, { type: 'video/webm' });
+        videoPlayback.src = URL.createObjectURL(videoBlob);
+      };
+    }
+
+    setTimeout(() => {
+      status.textContent = "Test finished. Review playback.";
+      startBtn.disabled = false;
+    }, 11000);
+
+  } catch (err) {
+    console.error(err);
+    status.textContent = "Error: " + err.message;
+    startBtn.disabled = false;
+  }
+};
+
+navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+  .then(stream => { stream.getTracks().forEach(t => t.stop()); return getDevices(); });
+navigator.mediaDevices.ondevicechange = getDevices;
+</script>
+
+</body>
+</html>
