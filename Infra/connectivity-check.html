@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Connectivity Monitor</title>
+<style>
+  :root {
+    --bg: #1a1a1c;
+    --bg-2: #1f1f22;
+    --panel: #26262a;
+    --panel-2: #2c2c30;
+    --border: #3a3a40;
+    --text: #e8e8ea;
+    --muted: #8e8e96;
+    --ok: #34d399;
+    --ok-soft: #34d39926;
+    --warn: #fbbf24;
+    --warn-soft: #fbbf2426;
+    --bad: #f87171;
+    --bad-soft: #f8717126;
+    --accent: #94a3b8;
+    --accent-strong: #cbd5e1;
+    --grid: #2e2e34;
+    --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: radial-gradient(1200px 800px at 10% -10%, #2a2a30 0%, transparent 60%),
+                radial-gradient(1000px 700px at 110% 110%, #25252b 0%, transparent 55%),
+                var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+
+  .wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 28px 24px 56px;
+  }
+
+  /* ---------- HEADER ---------- */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; margin-bottom: 24px; flex-wrap: wrap;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .brand-mark {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(135deg, #475569, #94a3b8);
+    display: grid; place-items: center;
+    box-shadow: 0 0 24px #94a3b833;
+  }
+  .brand-mark svg { width: 22px; height: 22px; color: #fff; }
+  .brand h1 { margin: 0; font-size: 20px; letter-spacing: 0.3px; }
+  .brand small { display: block; color: var(--muted); font-size: 12px; }
+
+  .header-status {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 10px 16px; border-radius: 999px;
+  }
+  .dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--muted);
+    box-shadow: 0 0 0 0 transparent;
+    transition: background 0.3s;
+  }
+  .dot.ok    { background: var(--ok);    animation: pulse-ok 1.6s infinite; }
+  .dot.warn  { background: var(--warn);  animation: pulse-warn 1.6s infinite; }
+  .dot.bad   { background: var(--bad);   animation: pulse-bad 1.6s infinite; }
+
+  @keyframes pulse-ok   { 0%{box-shadow:0 0 0 0 #34d39966} 70%{box-shadow:0 0 0 12px #34d39900} 100%{box-shadow:0 0 0 0 #34d39900} }
+  @keyframes pulse-warn { 0%{box-shadow:0 0 0 0 #fbbf2466} 70%{box-shadow:0 0 0 12px #fbbf2400} 100%{box-shadow:0 0 0 0 #fbbf2400} }
+  @keyframes pulse-bad  { 0%{box-shadow:0 0 0 0 #f8717166} 70%{box-shadow:0 0 0 12px #f8717100} 100%{box-shadow:0 0 0 0 #f8717100} }
+
+  .status-text { font-weight: 600; }
+  .status-sub { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+
+  /* ---------- CONTROLS ---------- */
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto auto auto;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 18px;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+  .field select, .field input {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 13px;
+    min-height: 36px;
+  }
+  .field select:focus, .field input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+
+  button {
+    align-self: end;
+    background: var(--accent);
+    color: #18181b;
+    border: 0; border-radius: 8px;
+    padding: 0 16px; min-height: 36px;
+    font-weight: 600; cursor: pointer;
+    transition: filter 0.15s, transform 0.15s, background 0.15s;
+  }
+  button:hover { background: var(--accent-strong); }
+  button:active { transform: translateY(1px); }
+  button.ghost {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  button.ghost:hover { background: var(--panel-2); }
+  button.danger { background: var(--bad); color: #18181b; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ---------- STATS GRID ---------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat::after {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.5;
+  }
+  .stat .label {
+    color: var(--muted); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.7px;
+    margin-bottom: 6px;
+  }
+  .stat .value {
+    font-family: var(--mono);
+    font-size: 22px; font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .stat .value .unit { color: var(--muted); font-size: 13px; margin-left: 3px; font-weight: 400; }
+  .stat.good .value { color: var(--ok); }
+  .stat.warn .value { color: var(--warn); }
+  .stat.bad  .value { color: var(--bad); }
+
+  /* ---------- CHART ---------- */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 18px;
+  }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .panel-head h2 { margin: 0; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.7px; font-weight: 600; }
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+
+  #chart { width: 100%; height: 220px; display: block; }
+
+  /* ---------- LOG ---------- */
+  .log-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .log-grid { grid-template-columns: 1fr; } }
+
+  .log-table {
+    width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px;
+  }
+  .log-table th, .log-table td {
+    text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border);
+  }
+  .log-table th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+  .log-scroll { max-height: 320px; overflow-y: auto; border-radius: 8px; }
+  .log-scroll::-webkit-scrollbar { width: 8px; }
+  .log-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .pill.ok   { background: var(--ok-soft);   color: var(--ok); }
+  .pill.bad  { background: var(--bad-soft);  color: var(--bad); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+
+  /* ---------- FOOTER ---------- */
+  footer {
+    margin-top: 24px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+    text-align: center;
+  }
+  footer code { background: var(--panel); padding: 1px 6px; border-radius: 4px; }
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width: 1000px) {
+    .stats { grid-template-columns: repeat(3, 1fr); }
+    .controls { grid-template-columns: 1fr 1fr; }
+    .controls button { grid-column: span 1; }
+  }
+  @media (max-width: 560px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .controls { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <header>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12.55a11 11 0 0 1 14 0"/>
+          <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+          <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+          <line x1="12" y1="20" x2="12.01" y2="20"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Connectivity Monitor</h1>
+        <small>Browser-based reachability &amp; latency probe</small>
+      </div>
+    </div>
+
+    <div class="header-status">
+      <span class="dot" id="statusDot"></span>
+      <div>
+        <div class="status-text" id="statusText">Idle</div>
+        <div class="status-sub" id="statusSub">Press Start to begin monitoring</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <div class="field">
+      <label for="target">Probe Target</label>
+      <select id="target">
+        <option value="cloudflare">Cloudflare (1.1.1.1)</option>
+        <option value="google" selected>Google (gstatic 204)</option>
+        <option value="apple">Apple (captive.apple.com)</option>
+        <option value="msft">Microsoft (msftconnecttest)</option>
+        <option value="all">All targets (parallel, best of)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="interval">Probe Interval</label>
+      <select id="interval">
+        <option value="1000">1 s</option>
+        <option value="2000" selected>2 s</option>
+        <option value="5000">5 s</option>
+        <option value="10000">10 s</option>
+        <option value="30000">30 s</option>
+        <option value="60000">60 s</option>
+      </select>
+    </div>
+    <button id="btnStart">Start</button>
+    <button id="btnStop" class="ghost" disabled>Stop</button>
+    <button id="btnExport" class="ghost" title="Download samples as CSV">Export CSV</button>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat" id="statUptime">
+      <div class="label">Uptime</div>
+      <div class="value">--<span class="unit">%</span></div>
+    </div>
+    <div class="stat" id="statLoss">
+      <div class="label">Packet Loss</div>
+      <div class="value">--<span class="unit">%</span></div>
+    </div>
+    <div class="stat" id="statAvg">
+      <div class="label">Avg Latency</div>
+      <div class="value">--<span class="unit">ms</span></div>
+    </div>
+    <div class="stat" id="statMin">
+      <div class="label">Min</div>
+      <div class="value">--<span class="unit">ms</span></div>
+    </div>
+    <div class="stat" id="statMax">
+      <div class="label">Max</div>
+      <div class="value">--<span class="unit">ms</span></div>
+    </div>
+    <div class="stat" id="statJitter">
+      <div class="label">Jitter</div>
+      <div class="value">--<span class="unit">ms</span></div>
+    </div>
+  </div>
+
+  <!-- CHART -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Latency over time</h2>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>RTT (ms)</span>
+        <span><i style="background:var(--bad)"></i>Failed probe</span>
+        <span><i style="background:var(--muted)"></i>Avg</span>
+      </div>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <!-- LOG + OUTAGES -->
+  <div class="log-grid">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Recent probes</h2>
+        <div class="legend"><span id="logCount">0 samples</span></div>
+      </div>
+      <div class="log-scroll">
+        <table class="log-table">
+          <thead>
+            <tr><th>Time</th><th>Target</th><th>Status</th><th>RTT</th></tr>
+          </thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Outage log</h2>
+        <div class="legend"><span id="outageCount">0 outages</span></div>
+      </div>
+      <div class="log-scroll">
+        <table class="log-table">
+          <thead>
+            <tr><th>Started</th><th>Ended</th><th>Duration</th></tr>
+          </thead>
+          <tbody id="outageBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>
+      Browsers can't send raw ICMP packets, so this tool measures <strong>HTTP round-trip time</strong> to public connectivity endpoints &mdash;
+      the same technique used by operating systems for captive-portal detection.
+      Results auto-save in this browser; you can close the tab and come back later, or hit <code>Export CSV</code> to share with your team.
+    </p>
+    <p style="margin-top:6px">
+      Session started: <span id="sessionStart" style="font-family:var(--mono)">&mdash;</span> &middot;
+      <a href="#" id="btnReset" style="color:var(--accent-strong)">Reset session</a>
+    </p>
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- CONFIG ----------
+  const TARGETS = {
+    cloudflare: { name: 'Cloudflare',   url: 'https://1.1.1.1/cdn-cgi/trace' },
+    google:     { name: 'Google',       url: 'https://www.gstatic.com/generate_204' },
+    apple:      { name: 'Apple',        url: 'https://captive.apple.com/hotspot-detect.html' },
+    msft:       { name: 'Microsoft',    url: 'https://www.msftconnecttest.com/connecttest.txt' },
+  };
+  const PROBE_TIMEOUT_MS = 5000;
+  const MAX_HISTORY = 600;       // chart + stats window
+  const MAX_LOG_ROWS = 50;       // recent probes table
+  const STORAGE_KEY = 'connmon.v1';
+
+  // ---------- STATE ----------
+  /** @type {{t:number, ok:boolean, rtt:number, target:string}[]} */
+  let samples = [];
+  /** @type {{start:number, end:number|null}[]} */
+  let outages = [];
+  let timer = null;
+  let running = false;
+  let sessionStart = null;
+  let lastSampleOk = null;
+
+  // ---------- DOM ----------
+  const $ = (id) => document.getElementById(id);
+  const dot         = $('statusDot');
+  const statusText  = $('statusText');
+  const statusSub   = $('statusSub');
+  const btnStart    = $('btnStart');
+  const btnStop     = $('btnStop');
+  const btnExport   = $('btnExport');
+  const btnReset    = $('btnReset');
+  const selTarget   = $('target');
+  const selInterval = $('interval');
+  const logBody     = $('logBody');
+  const logCount    = $('logCount');
+  const outageBody  = $('outageBody');
+  const outageCount = $('outageCount');
+  const sessionStartEl = $('sessionStart');
+  const canvas      = $('chart');
+  const ctx         = canvas.getContext('2d');
+
+  // ---------- PERSISTENCE ----------
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        samples: samples.slice(-MAX_HISTORY),
+        outages,
+        sessionStart,
+        target: selTarget.value,
+        interval: selInterval.value,
+      }));
+    } catch { /* quota etc. — silent */ }
+  }
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      samples = Array.isArray(d.samples) ? d.samples : [];
+      outages = Array.isArray(d.outages) ? d.outages : [];
+      sessionStart = d.sessionStart || null;
+      if (d.target && TARGETS[d.target]) selTarget.value = d.target;
+      if (d.interval) selInterval.value = d.interval;
+    } catch { /* ignore */ }
+  }
+
+  // ---------- PROBES ----------
+  async function probe(url) {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+    const cacheBust = (url.includes('?') ? '&' : '?') + '_=' + Date.now();
+    const t0 = performance.now();
+    try {
+      await fetch(url + cacheBust, {
+        mode: 'no-cors',
+        cache: 'no-store',
+        credentials: 'omit',
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+      clearTimeout(tid);
+      return { ok: true, rtt: performance.now() - t0 };
+    } catch (err) {
+      clearTimeout(tid);
+      return { ok: false, rtt: performance.now() - t0, err: err && err.name };
+    }
+  }
+
+  async function runProbe() {
+    const sel = selTarget.value;
+    let result, label;
+
+    if (sel === 'all') {
+      const entries = Object.entries(TARGETS);
+      const results = await Promise.all(entries.map(([k, t]) => probe(t.url).then(r => ({ ...r, key: k }))));
+      const ok = results.filter(r => r.ok);
+      if (ok.length) {
+        ok.sort((a, b) => a.rtt - b.rtt);
+        result = ok[0];
+        label = TARGETS[result.key].name;
+      } else {
+        result = { ok: false, rtt: Math.max(...results.map(r => r.rtt)) };
+        label = 'all-failed';
+      }
+    } else {
+      const t = TARGETS[sel];
+      result = await probe(t.url);
+      label = t.name;
+    }
+
+    const sample = { t: Date.now(), ok: result.ok, rtt: Math.round(result.rtt), target: label };
+    samples.push(sample);
+    if (samples.length > MAX_HISTORY) samples = samples.slice(-MAX_HISTORY);
+
+    // outage tracking
+    if (lastSampleOk === null) lastSampleOk = sample.ok;
+    if (!sample.ok && lastSampleOk) {
+      outages.push({ start: sample.t, end: null });
+    } else if (sample.ok && !lastSampleOk && outages.length) {
+      const last = outages[outages.length - 1];
+      if (last && last.end === null) last.end = sample.t;
+    }
+    lastSampleOk = sample.ok;
+
+    save();
+    render();
+  }
+
+  // ---------- STATS ----------
+  function computeStats() {
+    if (!samples.length) return null;
+    const win = samples.slice(-MAX_HISTORY);
+    const oks = win.filter(s => s.ok);
+    const rtts = oks.map(s => s.rtt);
+    const total = win.length;
+    const success = oks.length;
+    const lossPct = total ? (1 - success / total) * 100 : 0;
+    const uptimePct = 100 - lossPct;
+    const min = rtts.length ? Math.min(...rtts) : null;
+    const max = rtts.length ? Math.max(...rtts) : null;
+    const avg = rtts.length ? rtts.reduce((a, b) => a + b, 0) / rtts.length : null;
+    let jitter = null;
+    if (rtts.length > 1) {
+      const diffs = [];
+      for (let i = 1; i < rtts.length; i++) diffs.push(Math.abs(rtts[i] - rtts[i-1]));
+      jitter = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+    }
+    return { total, success, lossPct, uptimePct, min, max, avg, jitter };
+  }
+
+  // ---------- RENDER ----------
+  function setStat(id, value, cls) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const v = el.querySelector('.value');
+    const unit = v.querySelector('.unit');
+    const unitHTML = unit ? unit.outerHTML : '';
+    v.innerHTML = (value === null || value === undefined ? '--' : value) + unitHTML;
+    el.classList.remove('good', 'warn', 'bad');
+    if (cls) el.classList.add(cls);
+  }
+
+  function classifyLatency(ms) {
+    if (ms == null) return null;
+    if (ms < 100) return 'good';
+    if (ms < 300) return 'warn';
+    return 'bad';
+  }
+  function classifyLoss(p) {
+    if (p == null) return null;
+    if (p < 1)  return 'good';
+    if (p < 5)  return 'warn';
+    return 'bad';
+  }
+
+  function fmt(n, digits = 0) {
+    if (n == null || isNaN(n)) return '--';
+    return digits > 0 ? n.toFixed(digits) : Math.round(n).toString();
+  }
+  function fmtTime(ts) {
+    return new Date(ts).toLocaleTimeString();
+  }
+  function fmtDuration(ms) {
+    if (ms < 1000) return ms + 'ms';
+    const s = Math.round(ms / 1000);
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60), sr = s % 60;
+    if (m < 60) return m + 'm ' + sr + 's';
+    const h = Math.floor(m / 60), mr = m % 60;
+    return h + 'h ' + mr + 'm';
+  }
+
+  function renderStats() {
+    const s = computeStats();
+    if (!s) {
+      ['statUptime','statLoss','statAvg','statMin','statMax','statJitter'].forEach(id => setStat(id, null));
+      return;
+    }
+    setStat('statUptime', fmt(s.uptimePct, 1),
+            s.uptimePct >= 99 ? 'good' : (s.uptimePct >= 95 ? 'warn' : 'bad'));
+    setStat('statLoss',   fmt(s.lossPct, 1), classifyLoss(s.lossPct));
+    setStat('statAvg',    fmt(s.avg),        classifyLatency(s.avg));
+    setStat('statMin',    fmt(s.min),        classifyLatency(s.min));
+    setStat('statMax',    fmt(s.max),        classifyLatency(s.max));
+    setStat('statJitter', fmt(s.jitter, 1),  s.jitter == null ? null : (s.jitter < 30 ? 'good' : s.jitter < 80 ? 'warn' : 'bad'));
+  }
+
+  function renderHeader() {
+    if (!samples.length) {
+      dot.className = 'dot';
+      statusText.textContent = running ? 'Probing…' : 'Idle';
+      statusSub.textContent = running ? 'Waiting for first sample' : 'Press Start to begin monitoring';
+      return;
+    }
+    const last = samples[samples.length - 1];
+    const s = computeStats();
+    if (last.ok) {
+      const cls = classifyLatency(last.rtt);
+      dot.className = 'dot ' + (cls === 'good' ? 'ok' : cls === 'warn' ? 'warn' : 'bad');
+      statusText.textContent = 'Online';
+      statusSub.textContent = `${last.target} · ${last.rtt} ms · ${s.total} probes`;
+    } else {
+      dot.className = 'dot bad';
+      statusText.textContent = 'Offline';
+      statusSub.textContent = `Last failure at ${fmtTime(last.t)} · ${s.total} probes`;
+    }
+  }
+
+  function renderLog() {
+    const recent = samples.slice(-MAX_LOG_ROWS).reverse();
+    logCount.textContent = `${samples.length} samples`;
+    logBody.innerHTML = recent.map(s => `
+      <tr>
+        <td>${fmtTime(s.t)}</td>
+        <td>${escapeHtml(s.target)}</td>
+        <td>${s.ok
+          ? `<span class="pill ok">OK</span>`
+          : `<span class="pill bad">FAIL</span>`}</td>
+        <td>${s.ok ? s.rtt + ' ms' : '—'}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderOutages() {
+    outageCount.textContent = `${outages.length} outage${outages.length === 1 ? '' : 's'}`;
+    if (!outages.length) {
+      outageBody.innerHTML = `<tr><td colspan="3" style="color:var(--muted);text-align:center;padding:18px">No outages detected</td></tr>`;
+      return;
+    }
+    const rows = outages.slice().reverse().map(o => {
+      const dur = (o.end || Date.now()) - o.start;
+      return `<tr>
+        <td>${fmtTime(o.start)}</td>
+        <td>${o.end ? fmtTime(o.end) : '<span class="pill bad">ONGOING</span>'}</td>
+        <td>${fmtDuration(dur)}</td>
+      </tr>`;
+    });
+    outageBody.innerHTML = rows.join('');
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ---------- CHART ----------
+  function setupCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { w: rect.width, h: rect.height };
+  }
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function renderChart() {
+    const { w, h } = setupCanvas();
+    ctx.clearRect(0, 0, w, h);
+
+    const padL = 40, padR = 12, padT = 12, padB = 22;
+    const plotW = w - padL - padR;
+    const plotH = h - padT - padB;
+
+    const data = samples.slice(-MAX_HISTORY);
+    const okRtts = data.filter(s => s.ok).map(s => s.rtt);
+    const maxRtt = okRtts.length ? Math.max(100, Math.max(...okRtts) * 1.15) : 200;
+    const stats = computeStats();
+
+    const COLOR_MUTED  = cssVar('--muted')  || '#8e8e96';
+    const COLOR_GRID   = cssVar('--grid')   || '#2e2e34';
+    const COLOR_ACCENT = cssVar('--accent') || '#94a3b8';
+    const COLOR_BAD    = cssVar('--bad')    || '#f87171';
+
+    ctx.font = '11px ' + getComputedStyle(document.body).fontFamily;
+    ctx.fillStyle = COLOR_MUTED;
+    ctx.strokeStyle = COLOR_GRID;
+    ctx.lineWidth = 1;
+    const gridLines = 4;
+    for (let i = 0; i <= gridLines; i++) {
+      const y = padT + (plotH * i / gridLines);
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + plotW, y);
+      ctx.stroke();
+      const v = Math.round(maxRtt * (1 - i / gridLines));
+      ctx.fillText(v + ' ms', 4, y + 4);
+    }
+
+    if (!data.length) {
+      ctx.fillStyle = COLOR_MUTED;
+      ctx.textAlign = 'center';
+      ctx.fillText('No data yet — press Start', w / 2, h / 2);
+      ctx.textAlign = 'start';
+      return;
+    }
+
+    const x = (i) => padL + (data.length === 1 ? plotW / 2 : (plotW * i / (data.length - 1)));
+    const y = (rtt) => padT + plotH * (1 - Math.min(rtt, maxRtt) / maxRtt);
+
+    if (stats && stats.avg != null) {
+      const ay = y(stats.avg);
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = COLOR_MUTED;
+      ctx.beginPath(); ctx.moveTo(padL, ay); ctx.lineTo(padL + plotW, ay); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = COLOR_MUTED;
+      ctx.fillText('avg ' + Math.round(stats.avg), padL + plotW - 60, ay - 4);
+    }
+
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < data.length; i++) {
+      if (!data[i].ok) { started = false; continue; }
+      const px = x(i), py = y(data[i].rtt);
+      if (!started) { ctx.moveTo(px, padT + plotH); ctx.lineTo(px, py); started = true; }
+      else ctx.lineTo(px, py);
+    }
+    if (started) {
+      const last = (() => { for (let i = data.length - 1; i >= 0; i--) if (data[i].ok) return i; return -1; })();
+      if (last >= 0) ctx.lineTo(x(last), padT + plotH);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+      grad.addColorStop(0, COLOR_ACCENT + '55');
+      grad.addColorStop(1, COLOR_ACCENT + '00');
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    started = false;
+    ctx.strokeStyle = COLOR_ACCENT;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < data.length; i++) {
+      if (!data[i].ok) { started = false; continue; }
+      const px = x(i), py = y(data[i].rtt);
+      if (!started) { ctx.moveTo(px, py); started = true; }
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    for (let i = 0; i < data.length; i++) {
+      if (data[i].ok) continue;
+      const px = x(i);
+      ctx.strokeStyle = COLOR_BAD;
+      ctx.fillStyle = COLOR_BAD + '33';
+      ctx.lineWidth = 1;
+      ctx.fillRect(px - 1, padT, 2, plotH);
+    }
+
+    ctx.fillStyle = COLOR_MUTED;
+    ctx.fillText(fmtTime(data[0].t), padL, padT + plotH + 14);
+    const last = data[data.length - 1];
+    const lastLabel = fmtTime(last.t);
+    ctx.fillText(lastLabel, padL + plotW - ctx.measureText(lastLabel).width, padT + plotH + 14);
+  }
+
+  function render() {
+    renderHeader();
+    renderStats();
+    renderLog();
+    renderOutages();
+    renderChart();
+    sessionStartEl.textContent = sessionStart ? new Date(sessionStart).toLocaleString() : '—';
+  }
+
+  // ---------- CONTROL ----------
+  function start() {
+    if (running) return;
+    running = true;
+    if (!sessionStart) sessionStart = Date.now();
+    btnStart.disabled = true;
+    btnStop.disabled = false;
+    selTarget.disabled = true;
+    selInterval.disabled = true;
+    runProbe();
+    timer = setInterval(runProbe, parseInt(selInterval.value, 10));
+    render();
+  }
+  function stop() {
+    running = false;
+    if (timer) { clearInterval(timer); timer = null; }
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+    selTarget.disabled = false;
+    selInterval.disabled = false;
+    // close any ongoing outage with stop time as "end" — or leave it open?
+    // Leave it open: an outage is real even if we paused; user can reset to clear.
+    render();
+  }
+  function reset() {
+    stop();
+    samples = [];
+    outages = [];
+    sessionStart = null;
+    lastSampleOk = null;
+    save();
+    render();
+  }
+
+  function exportCSV() {
+    if (!samples.length) { alert('No samples to export yet.'); return; }
+    const lines = [['timestamp_iso','epoch_ms','target','status','rtt_ms'].join(',')];
+    for (const s of samples) {
+      lines.push([
+        new Date(s.t).toISOString(),
+        s.t,
+        '"' + s.target.replace(/"/g, '""') + '"',
+        s.ok ? 'ok' : 'fail',
+        s.ok ? s.rtt : ''
+      ].join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'connectivity-' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- WIRING ----------
+  btnStart.addEventListener('click', start);
+  btnStop.addEventListener('click', stop);
+  btnExport.addEventListener('click', exportCSV);
+  btnReset.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (confirm('Clear all samples and outages from this browser?')) reset();
+  });
+  selInterval.addEventListener('change', () => { if (running) { stop(); start(); } });
+  window.addEventListener('resize', renderChart);
+  window.addEventListener('online',  () => { /* trigger fast probe */ if (running) runProbe(); });
+  window.addEventListener('offline', () => { if (running) runProbe(); });
+
+  // ---------- BOOT ----------
+  load();
+  if (samples.length) {
+    lastSampleOk = samples[samples.length - 1].ok;
+  }
+  render();
+})();
+</script>
+</body>
+</html>
